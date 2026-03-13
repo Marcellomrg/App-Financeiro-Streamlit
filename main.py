@@ -106,7 +106,42 @@ if file_upload:
         ]
         st.line_chart(df_stats[columns_rel])
 
-    
+    # Aba Metas 
+
+    with st.expander("Metas"):
+        
+        col1,col2 = st.columns(2)
+
+        data_ref = col1.date_input("Patrimonio no Inicio da meta",max_value=df_stats.index.max())
+
+        data_filter = df_stats.index[df_stats.index <= data_ref][-1]
+
+        valor = df_stats.loc[data_filter]["Valor"]
+
+        sal_bruto = col1.number_input("Salário Bruto",min_value=0.)
+        sal_liq = col2.number_input("Salário Liquido",min_value=0.)
+
+        custo_mensal = col2.number_input("Gasto mensal",min_value=0.)
+
+        col1.markdown(f"**Valor no Inicio da meta**: R$ {valor:.2f}")
+
+        mensal= sal_bruto - custo_mensal
+        anual = mensal * 12
+
+        col_pot1,col_pot2 = st.columns(2)
+        with col_pot1.container(border=True):
+            st.markdown(f"Potencial de arrecadação mensal : R$ {mensal:.2f}")
+        with col_pot2.container(border=True):
+            st.markdown(f"Potencial de arrecadação anual : R$ {anual:.2f}")
+
+        with st.container(border=True):
+            col_meta1,col_meta2 = st.columns(2)
+            with col_meta1:
+                meta_estipulada = st.number_input(f"Meta Estipulada",min_value=0.,format="%.2f",value=anual)
+            with col_meta2:
+                patrimonio_estipulado = anual + valor
+                st.markdown(f"Patrimonio Estipulado: \n\n R$ {patrimonio_estipulado:.2f}")
+
 
 
 
