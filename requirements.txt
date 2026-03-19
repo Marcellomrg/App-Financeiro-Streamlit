@@ -1,6 +1,6 @@
 streamlit
 pandas
 numpy
-requets
+requests
 datetime
 altair<5
