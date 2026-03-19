@@ -1,7 +1,18 @@
-
+# %%
 import streamlit as st
 import pandas as pd
+import requests
+import datetime
 
+def get_selic():
+    url = "https://www.bcb.gov.br/api/servico/sitebcb/historicotaxasjuros"
+    resp = requests.get(url=url)
+    df = pd.DataFrame(resp.json()['conteudo'])
+    df['DataInicioVigencia'] = pd.to_datetime(df['DataInicioVigencia']).dt.date
+    df['DataFimVigencia'] = pd.to_datetime(df['DataFimVigencia']).dt.date.fillna(datetime.datetime.today().date())
+    return df
+
+# %%
 def stats_geral(df:pd.DataFrame):
         
     df_stats = df.groupby(by="Data")[["Valor"]].sum()
@@ -109,23 +120,43 @@ if file_upload:
     # Aba Metas 
 
     with st.expander("Metas"):
-        
+
         col1,col2 = st.columns(2)
-
         data_ref = col1.date_input("Patrimonio no Inicio da meta",max_value=df_stats.index.max())
-
+        # %
         data_filter = df_stats.index[df_stats.index <= data_ref][-1]
 
-        valor = df_stats.loc[data_filter]["Valor"]
+        valor_inicio = df_stats.loc[data_filter]["Valor"]
 
         sal_bruto = col1.number_input("Salário Bruto",min_value=0.)
         sal_liq = col2.number_input("Salário Liquido",min_value=0.)
 
         custo_mensal = col2.number_input("Gasto mensal",min_value=0.)
 
-        col1.markdown(f"**Valor no Inicio da meta**: R$ {valor:.2f}")
+        col1.markdown(f"**Valor no Inicio da meta**: R$ {valor_inicio:.2f}")
 
-        mensal= sal_bruto - custo_mensal
+        selic_gov = get_selic()
+        filter_selic = (selic_gov['DataInicioVigencia'] < data_ref) & (selic_gov['DataFimVigencia'] > data_ref)
+        selic_default = selic_gov[filter_selic]['MetaSelic'].iloc[0]
+        selic = st.number_input(label="Selic:",min_value=0.,value=selic_default,format="%.2f")
+        selic = selic/100
+
+        selic_mensal = ((1+selic)**(1/12) - 1)
+        rendimento_anual = valor_inicio * selic
+        rendimento_mensal = valor_inicio * ((1+selic)**(1/12) - 1)
+
+        col1_selic,col2_selic = st.columns(2)
+
+        with col1_selic:
+            st.text(f"Selic mensal: {100*selic_mensal:.2f}")
+            st.text(f"Selic anual: {100*selic:.2f}")
+
+        with col2_selic:
+            st.text(f"Rendimento mensal: R$ {rendimento_mensal:.2f}")
+            st.text(f"Rendimento anual: R$ {rendimento_anual:.2f}")
+
+
+        mensal= sal_bruto - custo_mensal + rendimento_mensal
         anual = mensal * 12
 
         col_pot1,col_pot2 = st.columns(2)
@@ -139,7 +170,7 @@ if file_upload:
             with col_meta1:
                 meta_estipulada = st.number_input(f"Meta Estipulada",min_value=0.,format="%.2f",value=anual)
             with col_meta2:
-                patrimonio_estipulado = anual + valor
+                patrimonio_estipulado = anual + valor_inicio
                 st.markdown(f"Patrimonio Estipulado: \n\n R$ {patrimonio_estipulado:.2f}")
 
 
