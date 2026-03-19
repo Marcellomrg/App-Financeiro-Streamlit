@@ -33,6 +33,62 @@ def stats_geral(df:pd.DataFrame):
 
     return df_stats
 
+def metas_main():
+
+            col1,col2 = st.columns(2)
+            data_ref = col1.date_input("Patrimonio no Inicio da meta",max_value=df_stats.index.max())
+            # %
+            data_filter = df_stats.index[df_stats.index <= data_ref][-1]
+
+            valor_inicio = df_stats.loc[data_filter]["Valor"]
+
+            sal_bruto = col1.number_input("Salário Bruto",min_value=0.)
+            sal_liq = col2.number_input("Salário Liquido",min_value=0.)
+
+            custo_mensal = col2.number_input("Gasto mensal",min_value=0.)
+
+            col1.markdown(f"**Valor no Inicio da meta**: R$ {valor_inicio:.2f}")
+
+            selic_gov = get_selic()
+            filter_selic = (selic_gov['DataInicioVigencia'] < data_ref) & (selic_gov['DataFimVigencia'] > data_ref)
+            selic_default = selic_gov[filter_selic]['MetaSelic'].iloc[0]
+            selic = st.number_input(label="Selic:",min_value=0.,value=selic_default,format="%.2f")
+            selic = selic/100
+
+            selic_mensal = ((1+selic)**(1/12) - 1)
+            rendimento_anual = valor_inicio * selic
+            rendimento_mensal = valor_inicio * ((1+selic)**(1/12) - 1)
+
+            col1_selic,col2_selic = st.columns(2)
+
+            with col1_selic:
+                st.text(f"Selic mensal: {100*selic_mensal:.2f}")
+                st.text(f"Selic anual: {100*selic:.2f}")
+
+            with col2_selic:
+                st.text(f"Rendimento mensal: R$ {rendimento_mensal:.2f}")
+                st.text(f"Rendimento anual: R$ {rendimento_anual:.2f}")
+
+
+            mensal= sal_bruto - custo_mensal + rendimento_mensal
+            anual = mensal * 12
+
+            col_pot1,col_pot2 = st.columns(2)
+            with col_pot1.container(border=True):
+                st.markdown(f"Potencial de arrecadação mensal : R$ {mensal:.2f}")
+            with col_pot2.container(border=True):
+                st.markdown(f"Potencial de arrecadação anual : R$ {anual:.2f}")
+
+            with st.container(border=True):
+                col_meta1,col_meta2 = st.columns(2)
+                with col_meta1:
+                    meta_estipulada = st.number_input(f"Meta Estipulada",min_value=0.,format="%.2f",value=anual)
+                with col_meta2:
+                    patrimonio_estipulado = anual + valor_inicio
+                    st.markdown(f"Patrimonio Estipulado: \n\n R$ {patrimonio_estipulado:.2f}")
+
+            return data_ref,valor_inicio,meta_estipulada,patrimonio_estipulado
+
 st.set_page_config(page_title="Finanças",page_icon="💰")
 st.markdown("""
 # Boas Vindas!
@@ -121,60 +177,36 @@ if file_upload:
 
     with st.expander("Metas"):
 
-        col1,col2 = st.columns(2)
-        data_ref = col1.date_input("Patrimonio no Inicio da meta",max_value=df_stats.index.max())
-        # %
-        data_filter = df_stats.index[df_stats.index <= data_ref][-1]
+        tab_main,tab_dados,tab_graph = st.tabs(['Configuração','Dados','Grafico'])
 
-        valor_inicio = df_stats.loc[data_filter]["Valor"]
+        with tab_main:
 
-        sal_bruto = col1.number_input("Salário Bruto",min_value=0.)
-        sal_liq = col2.number_input("Salário Liquido",min_value=0.)
+            data_ref,valor_inicio,meta_estipulada,patrimonio_estipulado= metas_main()
 
-        custo_mensal = col2.number_input("Gasto mensal",min_value=0.)
+        with tab_dados:
+            
+            df_patrimonio = df_stats.reset_index()[['Data','Valor']]
+            df_patrimonio['Data Referencia'] = pd.to_datetime(df_patrimonio["Data"]).dt.strftime("%Y-%m")
+            meses = pd.DataFrame({"Data Referencia":[(data_ref + pd.DateOffset(months=i)) for i in range(1,13)]
+                                  ,"Meta Mensal":[(valor_inicio+round(meta_estipulada/12,2) * i) for i in range(1,13)] })
+            meses['Data Referencia'] = pd.to_datetime(meses['Data Referencia']).dt.strftime("%Y-%m")
+            meses = meses.merge(df_patrimonio,how='left',on='Data Referencia')
+            meses = meses[["Data Referencia","Meta Mensal","Valor"]]
+            meses['Atingimento (%)'] = meses['Valor'] / meses['Meta Mensal']
+            meses['Atingimento ano'] = meses['Valor'] / patrimonio_estipulado
+            meses['Atingimento Esperado'] = meses['Meta Mensal'] / patrimonio_estipulado
+            meses = meses.set_index(['Data Referencia'])
 
-        col1.markdown(f"**Valor no Inicio da meta**: R$ {valor_inicio:.2f}")
+            columns_config_meses = {"Meta Mensal":st.column_config.NumberColumn("Meta Mensal",format="R$ %.2f")
+                                    ,"Valor":st.column_config.NumberColumn("Valor Atingido",format="R$ %.2f")
+                                    ,"Atingimento (%)":st.column_config.NumberColumn("Atingimento (%)",format="percent")
+                                    ,"Atingimento ano":st.column_config.NumberColumn("Atingimento ano",format="percent")
+                                    ,"Atingimento Esperado":st.column_config.NumberColumn("Atingimento Esperado",format="percent")}
 
-        selic_gov = get_selic()
-        filter_selic = (selic_gov['DataInicioVigencia'] < data_ref) & (selic_gov['DataFimVigencia'] > data_ref)
-        selic_default = selic_gov[filter_selic]['MetaSelic'].iloc[0]
-        selic = st.number_input(label="Selic:",min_value=0.,value=selic_default,format="%.2f")
-        selic = selic/100
+            st.dataframe(meses,column_config=columns_config_meses)
 
-        selic_mensal = ((1+selic)**(1/12) - 1)
-        rendimento_anual = valor_inicio * selic
-        rendimento_mensal = valor_inicio * ((1+selic)**(1/12) - 1)
-
-        col1_selic,col2_selic = st.columns(2)
-
-        with col1_selic:
-            st.text(f"Selic mensal: {100*selic_mensal:.2f}")
-            st.text(f"Selic anual: {100*selic:.2f}")
-
-        with col2_selic:
-            st.text(f"Rendimento mensal: R$ {rendimento_mensal:.2f}")
-            st.text(f"Rendimento anual: R$ {rendimento_anual:.2f}")
-
-
-        mensal= sal_bruto - custo_mensal + rendimento_mensal
-        anual = mensal * 12
-
-        col_pot1,col_pot2 = st.columns(2)
-        with col_pot1.container(border=True):
-            st.markdown(f"Potencial de arrecadação mensal : R$ {mensal:.2f}")
-        with col_pot2.container(border=True):
-            st.markdown(f"Potencial de arrecadação anual : R$ {anual:.2f}")
-
-        with st.container(border=True):
-            col_meta1,col_meta2 = st.columns(2)
-            with col_meta1:
-                meta_estipulada = st.number_input(f"Meta Estipulada",min_value=0.,format="%.2f",value=anual)
-            with col_meta2:
-                patrimonio_estipulado = anual + valor_inicio
-                st.markdown(f"Patrimonio Estipulado: \n\n R$ {patrimonio_estipulado:.2f}")
-
-
-
-
+        with tab_graph:
+            st.line_chart(meses[['Atingimento ano','Atingimento Esperado']])
+            
 
 # Nao há dados no arquivo

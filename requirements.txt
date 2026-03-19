@@ -1,4 +1,6 @@
 streamlit
 pandas
 numpy
+requets
+datetime
 altair<5
